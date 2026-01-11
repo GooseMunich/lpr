@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <title>LPR - Распознавание номеров</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        border: "hsl(214.3 31.8% 91.4%)",
+                        input: "hsl(214.3 31.8% 91.4%)",
+                        ring: "hsl(222.2 84% 4.9%)",
+                        background: "hsl(0 0% 100%)",
+                        foreground: "hsl(222.2 84% 4.9%)",
+                        primary: { DEFAULT: "hsl(222.2 47.4% 11.2%)", foreground: "hsl(210 40% 98%)" },
+                        secondary: { DEFAULT: "hsl(210 40% 96.1%)", foreground: "hsl(222.2 47.4% 11.2%)" },
+                        muted: { DEFAULT: "hsl(210 40% 96.1%)", foreground: "hsl(215.4 16.3% 46.9%)" },
+                        accent: { DEFAULT: "hsl(210 40% 96.1%)", foreground: "hsl(222.2 47.4% 11.2%)" },
+                        destructive: { DEFAULT: "hsl(0 84.2% 60.2%)", foreground: "hsl(210 40% 98%)" },
+                    },
+                    borderRadius: {
+                        lg: "0.5rem",
+                        md: "calc(0.5rem - 2px)",
+                        sm: "calc(0.5rem - 4px)",
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        .card { background: white; border: 1px solid hsl(214.3 31.8% 91.4%); border-radius: 0.5rem; box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1); }
+        .btn { display: inline-flex; align-items: center; justify-content: center; border-radius: 0.375rem; font-size: 0.875rem; font-weight: 500; height: 2.5rem; padding: 0 1rem; transition: all 0.2s; }
+        .btn-primary { background: hsl(222.2 47.4% 11.2%); color: white; }
+        .btn-primary:hover { background: hsl(222.2 47.4% 20%); }
+        .btn-secondary { background: hsl(210 40% 96.1%); color: hsl(222.2 47.4% 11.2%); border: 1px solid hsl(214.3 31.8% 91.4%); }
+        .btn-secondary:hover { background: hsl(210 40% 90%); }
+        .btn-active { background: hsl(222.2 47.4% 11.2%); color: white; }
+        .input { height: 2.5rem; width: 100%; border-radius: 0.375rem; border: 1px solid hsl(214.3 31.8% 91.4%); padding: 0 0.75rem; font-size: 0.875rem; background: white; }
+        .input:focus { outline: none; ring: 2px; ring-color: hsl(222.2 84% 4.9%); border-color: hsl(222.2 84% 4.9%); }
+        .status-full { background: #dcfce7; color: #166534; }
+        .status-partial { background: #fef3c7; color: #92400e; }
+        .status-none { background: #fee2e2; color: #991b1b; }
+        .gpu-bar { height: 6px; border-radius: 3px; background: #e5e7eb; overflow: hidden; }
+        .gpu-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s ease; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="max-w-7xl mx-auto p-4 sm:p-6">
+        <!-- Header -->
+        <div class="card p-4 mb-6">
+            <div class="flex flex-col sm:flex-row sm:items-center gap-4">
+                <h1 class="text-xl font-semibold text-gray-900">{{ title }}</h1>
+                <div class="flex flex-wrap gap-2 sm:ml-auto">
+                    <form action="/" method="get" class="flex gap-2">
+                        <input type="date" name="date" value="{{ date_filter }}" class="input w-auto">
+                        <button type="submit" class="btn btn-secondary">Показать</button>
+                    </form>
+                    <form action="/" method="get" class="flex gap-2">
+                        <input type="text" name="search" placeholder="Поиск..." value="{{ search_query }}" class="input w-32 sm:w-40">
+                        <button type="submit" class="btn btn-secondary">Найти</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Stats & Status Filter -->
+            <div class="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-gray-100">
+                <span class="text-sm text-gray-500">Статус:</span>
+                <a href="/?date={{ date_filter }}" class="btn btn-secondary text-sm {% if not status_filter %}btn-active{% endif %}">
+                    Все ({{ stats.total }})
+                </a>
+                <a href="/?date={{ date_filter }}&status=full" class="btn btn-secondary text-sm {% if status_filter == 'full' %}btn-active{% endif %}">
+                    <span class="w-2 h-2 rounded-full bg-green-500 mr-2"></span>
+                    Полные ({{ stats.full }})
+                </a>
+                <a href="/?date={{ date_filter }}&status=partial" class="btn btn-secondary text-sm {% if status_filter == 'partial' %}btn-active{% endif %}">
+                    <span class="w-2 h-2 rounded-full bg-yellow-500 mr-2"></span>
+                    Частичные ({{ stats.partial }})
+                </a>
+                <a href="/?date={{ date_filter }}&status=none" class="btn btn-secondary text-sm {% if status_filter == 'none' %}btn-active{% endif %}">
+                    <span class="w-2 h-2 rounded-full bg-red-500 mr-2"></span>
+                    Не распознаны ({{ stats.none }})
+                </a>
+            </div>
+
+            <div class="flex flex-wrap gap-2 mt-4 pt-4 border-t border-gray-100">
+                <a href="/" class="btn btn-secondary text-sm">Сбросить</a>
+                <div class="flex-1"></div>
+                <a href="/watchlist" class="btn btn-secondary">Ожидание</a>
+                <a href="/settings" class="btn btn-secondary">Настройки</a>
+                <a href="/video" class="btn btn-primary">Видео</a>
+            </div>
+        </div>
+
+        <!-- GPU Monitor -->
+        <div class="card mb-6" id="gpu-monitor">
+            <div class="flex items-center gap-2 p-4 cursor-pointer select-none" onclick="toggleGpu()">
+                <svg class="w-5 h-5 text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="6" width="20" height="12" rx="2"/>
+                    <path d="M6 10h2v4H6z M10 10h2v4h-2z M14 10h2v4h-2z"/>
+                    <path d="M22 10h1 M22 14h1 M1 10H0 M1 14H0"/>
+                </svg>
+                <span class="font-medium text-gray-900" id="gpu-name">GPU</span>
+                <span class="text-sm text-gray-500 ml-2" id="gpu-summary"></span>
+                <svg id="gpu-chevron" class="w-4 h-4 text-gray-400 ml-auto transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 9l-7 7-7-7"/>
+                </svg>
+            </div>
+            <div id="gpu-content" class="grid grid-cols-2 sm:grid-cols-4 gap-4 px-4 pb-4">
+                <div>
+                    <div class="flex justify-between text-sm mb-1">
+                        <span class="text-gray-500">Нагрузка</span>
+                        <span class="font-medium" id="gpu-util">--%</span>
+                    </div>
+                    <div class="gpu-bar">
+                        <div class="gpu-bar-fill bg-green-500" id="gpu-util-bar" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="flex justify-between text-sm mb-1">
+                        <span class="text-gray-500">Температура</span>
+                        <span class="font-medium" id="gpu-temp">--°C</span>
+                    </div>
+                    <div class="gpu-bar">
+                        <div class="gpu-bar-fill" id="gpu-temp-bar" style="width: 0%; background: #22c55e"></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="flex justify-between text-sm mb-1">
+                        <span class="text-gray-500">Вентилятор</span>
+                        <span class="font-medium" id="gpu-fan">--%</span>
+                    </div>
+                    <div class="gpu-bar">
+                        <div class="gpu-bar-fill bg-blue-500" id="gpu-fan-bar" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="flex justify-between text-sm mb-1">
+                        <span class="text-gray-500">Память</span>
+                        <span class="font-medium" id="gpu-mem">-- / -- MB</span>
+                    </div>
+                    <div class="gpu-bar">
+                        <div class="gpu-bar-fill bg-purple-500" id="gpu-mem-bar" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Plates Grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {% if plates %}
+                {% for plate in plates %}
+                <div class="card overflow-hidden hover:shadow-md transition-shadow cursor-pointer" onclick="openLightbox('/images/{{ plate[3].split('/')[-1] if plate[3] else '' }}')">
+                    <div class="aspect-video bg-gray-100 relative">
+                        <img src="/images/{{ plate[3].split('/')[-1] if plate[3] else '' }}"
+                             alt="{{ plate[1] }}"
+                             class="w-full h-full object-cover"
+                             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <div class="absolute inset-0 items-center justify-center text-gray-400 text-sm hidden">
+                            Нет фото
+                        </div>
+                        <!-- Status indicator -->
+                        {% if plate[4] == 'full' %}
+                        <div class="absolute top-2 right-2 w-3 h-3 rounded-full bg-green-500 shadow"></div>
+                        {% elif plate[4] == 'partial' %}
+                        <div class="absolute top-2 right-2 w-3 h-3 rounded-full bg-yellow-500 shadow"></div>
+                        {% else %}
+                        <div class="absolute top-2 right-2 w-3 h-3 rounded-full bg-red-500 shadow"></div>
+                        {% endif %}
+                    </div>
+                    <div class="p-3">
+                        <div class="flex items-center gap-2">
+                            <div class="text-lg font-mono font-bold text-gray-900 tracking-wider">{{ plate[1] }}</div>
+                            {% if plate[4] == 'partial' %}
+                            <span class="text-xs px-2 py-0.5 rounded-full status-partial">частично</span>
+                            {% elif plate[4] == 'none' %}
+                            <span class="text-xs px-2 py-0.5 rounded-full status-none">не распознан</span>
+                            {% endif %}
+                        </div>
+                        <div class="flex items-center justify-between mt-1">
+                            <span class="text-sm text-gray-500">{{ plate[5][:16] if plate[5] else '' }}</span>
+                            <span class="text-xs font-medium px-2 py-0.5 bg-gray-100 rounded-full text-gray-600">{{ "%.0f"|format(plate[2]*100) }}%</span>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="col-span-full card p-12 text-center">
+                    <div class="text-gray-400 text-4xl mb-3">🚗</div>
+                    <h2 class="text-lg font-medium text-gray-900">Номера не найдены</h2>
+                    <p class="text-gray-500 mt-1">За выбранный период нет распознанных номеров</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Lightbox -->
+    <div id="lightbox" class="fixed inset-0 bg-black/80 z-50 hidden items-center justify-center p-4" onclick="closeLightbox()">
+        <button class="absolute top-4 right-4 text-white hover:text-gray-300 text-3xl">&times;</button>
+        <img id="lightbox-img" src="" alt="" class="max-w-full max-h-full rounded-lg shadow-2xl">
+    </div>
+
+    <script>
+        function openLightbox(src) {
+            if (!src || src.includes('undefined')) return;
+            document.getElementById('lightbox-img').src = src;
+            document.getElementById('lightbox').classList.remove('hidden');
+            document.getElementById('lightbox').classList.add('flex');
+        }
+        function closeLightbox() {
+            document.getElementById('lightbox').classList.add('hidden');
+            document.getElementById('lightbox').classList.remove('flex');
+        }
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+
+        // GPU monitoring
+        let gpuExpanded = localStorage.getItem('gpuExpanded') !== 'false';
+
+        function toggleGpu() {
+            gpuExpanded = !gpuExpanded;
+            localStorage.setItem('gpuExpanded', gpuExpanded);
+            updateGpuVisibility();
+        }
+
+        function updateGpuVisibility() {
+            const content = document.getElementById('gpu-content');
+            const chevron = document.getElementById('gpu-chevron');
+            const summary = document.getElementById('gpu-summary');
+            if (gpuExpanded) {
+                content.style.display = 'grid';
+                chevron.style.transform = 'rotate(0deg)';
+                summary.style.display = 'none';
+            } else {
+                content.style.display = 'none';
+                chevron.style.transform = 'rotate(-90deg)';
+                summary.style.display = 'inline';
+            }
+        }
+
+        function getTempColor(temp) {
+            if (temp < 50) return '#22c55e';
+            if (temp < 70) return '#eab308';
+            if (temp < 85) return '#f97316';
+            return '#ef4444';
+        }
+
+        function updateGpuStats() {
+            fetch('/api/gpu')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        document.getElementById('gpu-name').textContent = 'GPU: ошибка';
+                        return;
+                    }
+                    document.getElementById('gpu-name').textContent = data.name;
+                    document.getElementById('gpu-summary').textContent = data.temp + '°C • ' + data.gpu_util + '%';
+                    document.getElementById('gpu-util').textContent = data.gpu_util + '%';
+                    document.getElementById('gpu-util-bar').style.width = data.gpu_util + '%';
+                    document.getElementById('gpu-temp').textContent = data.temp + '°C';
+                    const tempPercent = Math.min(100, (data.temp / 100) * 100);
+                    document.getElementById('gpu-temp-bar').style.width = tempPercent + '%';
+                    document.getElementById('gpu-temp-bar').style.background = getTempColor(data.temp);
+                    if (data.fan !== null) {
+                        document.getElementById('gpu-fan').textContent = data.fan + '%';
+                        document.getElementById('gpu-fan-bar').style.width = data.fan + '%';
+                    } else {
+                        document.getElementById('gpu-fan').textContent = 'N/A';
+                    }
+                    document.getElementById('gpu-mem').textContent = data.mem_used + ' / ' + data.mem_total + ' MB';
+                    const memPercent = (data.mem_used / data.mem_total) * 100;
+                    document.getElementById('gpu-mem-bar').style.width = memPercent + '%';
+                })
+                .catch(err => console.error('GPU stats error:', err));
+        }
+
+        updateGpuVisibility();
+        updateGpuStats();
+        setInterval(updateGpuStats, 2000);
+    </script>
+</body>
+</html>

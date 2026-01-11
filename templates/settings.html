@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <title>LPR - Настройки</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .card { background: white; border: 1px solid hsl(214.3 31.8% 91.4%); border-radius: 0.5rem; box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1); }
+        .btn { display: inline-flex; align-items: center; justify-content: center; border-radius: 0.375rem; font-size: 0.875rem; font-weight: 500; height: 2.5rem; padding: 0 1rem; transition: all 0.2s; text-decoration: none; }
+        .btn-primary { background: hsl(222.2 47.4% 11.2%); color: white; }
+        .btn-primary:hover { background: hsl(222.2 47.4% 20%); }
+        .btn-secondary { background: hsl(210 40% 96.1%); color: hsl(222.2 47.4% 11.2%); border: 1px solid hsl(214.3 31.8% 91.4%); }
+        .btn-secondary:hover { background: hsl(210 40% 90%); }
+        .btn-destructive { background: hsl(0 84.2% 60.2%); color: white; }
+        .btn-destructive:hover { background: hsl(0 84.2% 50%); }
+        .input { height: 2.5rem; width: 100%; border-radius: 0.375rem; border: 1px solid hsl(214.3 31.8% 91.4%); padding: 0 0.75rem; font-size: 0.875rem; background: white; }
+        .input:focus { outline: 2px solid hsl(222.2 84% 4.9%); outline-offset: -1px; }
+
+        /* Toggle Switch */
+        .toggle { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
+        .toggle input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider { position: absolute; cursor: pointer; inset: 0; background: hsl(214.3 31.8% 91.4%); border-radius: 9999px; transition: 0.2s; }
+        .toggle-slider:before { content: ""; position: absolute; height: 20px; width: 20px; left: 2px; bottom: 2px; background: white; border-radius: 50%; transition: 0.2s; box-shadow: 0 1px 3px rgb(0 0 0 / 0.2); }
+        .toggle input:checked + .toggle-slider { background: hsl(222.2 47.4% 11.2%); }
+        .toggle input:checked + .toggle-slider:before { transform: translateX(20px); }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="max-w-2xl mx-auto p-4 sm:p-6">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-6">
+            <h1 class="text-2xl font-semibold text-gray-900">Настройки</h1>
+            <a href="/" class="btn btn-secondary">← Назад</a>
+        </div>
+
+        {% if saved %}
+        <div class="card p-4 mb-6 bg-green-50 border-green-200">
+            <p class="text-green-800 text-sm font-medium">Настройки сохранены</p>
+        </div>
+        {% endif %}
+
+        <!-- Cameras Section (отдельно от формы) -->
+        <div class="card p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-medium text-gray-900">Камеры</h2>
+                <button type="button" onclick="showAddCameraModal()" class="btn btn-primary text-sm h-8 px-3">+ Добавить</button>
+            </div>
+            <p class="text-xs text-gray-500 mb-4">RTSP потоки для распознавания номеров</p>
+
+            <div id="camerasList" class="space-y-3">
+                {% for cam in cameras %}
+                <div class="p-4 border border-gray-200 rounded-lg" data-camera-id="{{ cam.id }}">
+                    <div class="flex items-start justify-between gap-4">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="font-medium text-gray-900">{{ cam.name }}</span>
+                                {% if cam.enabled %}
+                                <span class="px-1.5 py-0.5 text-xs bg-green-100 text-green-700 rounded">Вкл</span>
+                                {% else %}
+                                <span class="px-1.5 py-0.5 text-xs bg-gray-100 text-gray-500 rounded">Выкл</span>
+                                {% endif %}
+                            </div>
+                            <div class="text-xs text-gray-500 font-mono truncate">{{ cam.url }}</div>
+                            {% if cam.mask and cam.mask|length > 0 %}
+                            <div class="text-xs text-blue-600 mt-1">Маска: {{ cam.mask|length }} точек</div>
+                            {% endif %}
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <label class="toggle" title="Распознавание">
+                                <input type="checkbox" {% if cam.enabled %}checked{% endif %} onchange="toggleCamera('{{ cam.id }}', this.checked)">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <button type="button" onclick="editCamera('{{ cam.id }}', '{{ cam.name }}', '{{ cam.url }}')" class="text-gray-400 hover:text-gray-600" title="Редактировать">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                </svg>
+                            </button>
+                            <button type="button" onclick="deleteCamera('{{ cam.id }}', '{{ cam.name }}')" class="text-gray-400 hover:text-red-600" title="Удалить">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            <p class="text-xs text-gray-400 mt-4">Маски настраиваются на странице видеопотока для каждой камеры</p>
+        </div>
+
+        <form method="POST" class="space-y-6">
+            <!-- Telegram Section -->
+            <div class="card p-6">
+                <h2 class="text-lg font-medium text-gray-900 mb-4">Telegram</h2>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">API токен бота</label>
+                        <input type="text" name="telegram_token" value="{{ settings.telegram_token }}" placeholder="123456:ABC..." class="input">
+                        <p class="text-xs text-gray-500 mt-1">Получить у @BotFather</p>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">ID чата/группы</label>
+                        <input type="text" name="telegram_chat_id" value="{{ settings.telegram_chat_id }}" placeholder="-1001234567890" class="input">
+                        <p class="text-xs text-gray-500 mt-1">Узнать через @userinfobot</p>
+                    </div>
+
+                    <div class="pt-4 border-t border-gray-100 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <div class="text-sm font-medium text-gray-900">Уведомления о номерах</div>
+                                <div class="text-xs text-gray-500">Отправлять при распознавании</div>
+                            </div>
+                            <label class="toggle">
+                                <input type="checkbox" name="telegram_enabled" value="1" {% if settings.telegram_enabled %}checked{% endif %}>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <div class="text-sm font-medium text-gray-900">Ожидаемые номера</div>
+                                <div class="text-xs text-gray-500">Уведомления из листа ожидания</div>
+                            </div>
+                            <label class="toggle">
+                                <input type="checkbox" name="telegram_watchlist_enabled" value="1" {% if settings.telegram_watchlist_enabled %}checked{% endif %}>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recognition Section -->
+            <div class="card p-6">
+                <h2 class="text-lg font-medium text-gray-900 mb-4">Распознавание</h2>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Таймаут дубликатов (минуты)</label>
+                        <input type="number" name="duplicate_timeout" value="{{ (settings.duplicate_timeout / 60) | int }}" min="1" max="60" class="input">
+                        <p class="text-xs text-gray-500 mt-1">Игнорировать повторное распознавание</p>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Минимальная уверенность (%)</label>
+                        <input type="number" name="min_confidence" value="{{ settings.min_confidence }}" min="10" max="90" class="input">
+                        <p class="text-xs text-gray-500 mt-1">Порог для фильтрации ложных срабатываний</p>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Кадров для OCR</label>
+                        <input type="number" name="max_frames_ocr" value="{{ settings.max_frames_ocr }}" min="3" max="20" class="input">
+                        <p class="text-xs text-gray-500 mt-1">Количество лучших кадров для распознавания</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tracking Section -->
+            <div class="card p-6">
+                <h2 class="text-lg font-medium text-gray-900 mb-4">Трекинг</h2>
+                <p class="text-xs text-gray-500 mb-4">Отслеживание машин между кадрами</p>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Мин. длительность трека (сек)</label>
+                        <input type="number" name="min_track_duration" value="{{ settings.min_track_duration }}" min="0.5" max="5" step="0.5" class="input">
+                        <p class="text-xs text-gray-500 mt-1">Для сохранения распознанных номеров</p>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Мин. длительность для нераспознанных (сек)</label>
+                        <input type="number" name="min_duration_unknown" value="{{ settings.min_duration_unknown }}" min="1" max="10" step="0.5" class="input">
+                        <p class="text-xs text-gray-500 mt-1">Отсекает ложные короткие треки</p>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Таймаут потери трека (сек)</label>
+                        <input type="number" name="max_track_age" value="{{ settings.max_track_age }}" min="1" max="10" step="0.5" class="input">
+                        <p class="text-xs text-gray-500 mt-1">Время до завершения трека после потери машины</p>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Порог IoU</label>
+                        <input type="number" name="iou_threshold" value="{{ settings.iou_threshold }}" min="0.1" max="0.5" step="0.05" class="input">
+                        <p class="text-xs text-gray-500 mt-1">Для сопоставления детекций (0.2 рекомендуется)</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mask Section -->
+            <div class="card p-6">
+                <h2 class="text-lg font-medium text-gray-900 mb-4">Маска зоны</h2>
+                <p class="text-xs text-gray-500 mb-4">Фильтрация машин по области детекции</p>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Режим проверки</label>
+                    <select name="mask_mode" class="input">
+                        <option value="bottom" {% if settings.mask_mode == 'bottom' %}selected{% endif %}>Нижний центр (рекомендуется)</option>
+                        <option value="center" {% if settings.mask_mode == 'center' %}selected{% endif %}>Центр</option>
+                        <option value="all_corners" {% if settings.mask_mode == 'all_corners' %}selected{% endif %}>Все углы (строгий)</option>
+                    </select>
+                    <p class="text-xs text-gray-500 mt-1">
+                        <strong>Нижний центр</strong> — точка касания машины с дорогой (лучше для парковки)<br>
+                        <strong>Центр</strong> — геометрический центр рамки<br>
+                        <strong>Все углы</strong> — вся машина должна быть в зоне
+                    </p>
+                </div>
+            </div>
+
+            <!-- Storage Section -->
+            <div class="card p-6">
+                <h2 class="text-lg font-medium text-gray-900 mb-4">Хранение данных</h2>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Срок хранения (дней)</label>
+                    <input type="number" name="data_retention_days" value="{{ settings.data_retention_days }}" min="7" max="365" class="input">
+                    <p class="text-xs text-gray-500 mt-1">Старые записи удаляются автоматически</p>
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex flex-wrap gap-3">
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+                <a href="/" class="btn btn-secondary">Отмена</a>
+                <a href="/restart" class="btn btn-destructive ml-auto" onclick="return confirm('Перезапустить сервис? Изменения камер вступят в силу.');">Перезапустить</a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Modal для добавления/редактирования камеры -->
+    <div id="cameraModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <h3 id="modalTitle" class="text-lg font-medium text-gray-900 mb-4">Добавить камеру</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Название</label>
+                    <input type="text" id="cameraName" class="input" placeholder="Камера 1">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">RTSP URL</label>
+                    <input type="text" id="cameraUrl" class="input" placeholder="rtsp://user:pass@ip:554/stream">
+                </div>
+            </div>
+            <div class="flex gap-3 mt-6">
+                <button type="button" onclick="saveCamera()" class="btn btn-primary flex-1">Сохранить</button>
+                <button type="button" onclick="hideCameraModal()" class="btn btn-secondary">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let editingCameraId = null;
+
+        function showAddCameraModal() {
+            editingCameraId = null;
+            document.getElementById('modalTitle').textContent = 'Добавить камеру';
+            document.getElementById('cameraName').value = '';
+            document.getElementById('cameraUrl').value = '';
+            document.getElementById('cameraModal').classList.remove('hidden');
+            document.getElementById('cameraModal').classList.add('flex');
+        }
+
+        function editCamera(id, name, url) {
+            editingCameraId = id;
+            document.getElementById('modalTitle').textContent = 'Редактировать камеру';
+            document.getElementById('cameraName').value = name;
+            document.getElementById('cameraUrl').value = url;
+            document.getElementById('cameraModal').classList.remove('hidden');
+            document.getElementById('cameraModal').classList.add('flex');
+        }
+
+        function hideCameraModal() {
+            document.getElementById('cameraModal').classList.add('hidden');
+            document.getElementById('cameraModal').classList.remove('flex');
+        }
+
+        async function saveCamera() {
+            const name = document.getElementById('cameraName').value.trim();
+            const url = document.getElementById('cameraUrl').value.trim();
+
+            if (!url) {
+                alert('URL обязателен');
+                return;
+            }
+
+            try {
+                let resp;
+                if (editingCameraId) {
+                    resp = await fetch(`/api/cameras/${editingCameraId}`, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({name: name || 'Камера', url})
+                    });
+                } else {
+                    resp = await fetch('/api/cameras', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({name: name || 'Новая камера', url})
+                    });
+                }
+
+                if (resp.ok) {
+                    location.reload();
+                } else {
+                    const data = await resp.json();
+                    alert(data.error || 'Ошибка сохранения');
+                }
+            } catch (e) {
+                alert('Ошибка: ' + e.message);
+            }
+        }
+
+        async function toggleCamera(id, enabled) {
+            try {
+                await fetch(`/api/cameras/${id}`, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({enabled})
+                });
+            } catch (e) {
+                alert('Ошибка: ' + e.message);
+                location.reload();
+            }
+        }
+
+        async function deleteCamera(id, name) {
+            if (!confirm(`Удалить камеру "${name}"?`)) return;
+
+            try {
+                const resp = await fetch(`/api/cameras/${id}`, {method: 'DELETE'});
+                if (resp.ok) {
+                    location.reload();
+                } else {
+                    const data = await resp.json();
+                    alert(data.error || 'Ошибка удаления');
+                }
+            } catch (e) {
+                alert('Ошибка: ' + e.message);
+            }
+        }
+
+        // Закрытие модала по клику вне
+        document.getElementById('cameraModal').addEventListener('click', function(e) {
+            if (e.target === this) hideCameraModal();
+        });
+    </script>
+</body>
+</html>

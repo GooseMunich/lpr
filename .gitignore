@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv/
+
+# Data directory (contains DB, images, settings)
+data/
+*.db
+*.log
+
+# Settings with secrets
+settings.json
+cameras.json
+watchlist.json
+mask.json
+
+# Model files (downloaded automatically)
+*.pt
+!plate_detect.pt
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp
+*.tmp
+*.bak

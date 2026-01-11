@@ -1,0 +1,22 @@
+# Core ML
+torch
+torchvision
+torchaudio
+ultralytics
+easyocr
+
+# Web
+fastapi
+uvicorn[standard]
+jinja2
+python-multipart
+
+# Image processing
+Pillow
+opencv-python
+
+# Networking
+requests
+
+# Model download
+huggingface_hub

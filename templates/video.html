@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <title>LPR - Видеопоток</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .card { background: white; border: 1px solid hsl(214.3 31.8% 91.4%); border-radius: 0.5rem; box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1); }
+        .btn { display: inline-flex; align-items: center; justify-content: center; border-radius: 0.375rem; font-size: 0.875rem; font-weight: 500; height: 2.5rem; padding: 0 1rem; transition: all 0.2s; text-decoration: none; cursor: pointer; }
+        .btn-secondary { background: hsl(210 40% 96.1%); color: hsl(222.2 47.4% 11.2%); border: 1px solid hsl(214.3 31.8% 91.4%); }
+        .btn-secondary:hover { background: hsl(210 40% 90%); }
+        .btn-primary { background: hsl(222.2 47.4% 11.2%); color: white; border: none; }
+        .btn-primary:hover { background: hsl(222.2 47.4% 20%); }
+        .btn-danger { background: #ef4444; color: white; border: none; }
+        .btn-danger:hover { background: #dc2626; }
+        .btn-success { background: #22c55e; color: white; border: none; }
+        .btn-success:hover { background: #16a34a; }
+        .btn-active { background: #3b82f6; color: white; border: none; }
+        .pulse { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .gpu-bar { height: 6px; border-radius: 3px; background: #e5e7eb; overflow: hidden; }
+        .gpu-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s ease; }
+        .video-container { position: relative; }
+        .video-container canvas { position: absolute; top: 0; left: 0; pointer-events: none; }
+        .video-container.drawing canvas { pointer-events: auto; cursor: crosshair; }
+        .camera-tab { padding: 0.5rem 1rem; border-radius: 0.375rem; cursor: pointer; transition: all 0.2s; }
+        .camera-tab:hover { background: hsl(210 40% 96.1%); }
+        .camera-tab.active { background: hsl(222.2 47.4% 11.2%); color: white; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="max-w-6xl mx-auto p-4 sm:p-6">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-6">
+            <h1 class="text-2xl font-semibold text-gray-900">Видеопоток</h1>
+            <a href="/" class="btn btn-secondary">← Назад</a>
+        </div>
+
+        <!-- Camera Tabs -->
+        {% if cameras|length > 1 %}
+        <div class="card p-2 mb-4">
+            <div class="flex flex-wrap gap-2">
+                {% for cam in cameras %}
+                <a href="?camera={{ cam.id }}"
+                   class="camera-tab {% if cam.id == current_camera %}active{% endif %}">
+                    {{ cam.name }}
+                    {% if not cam.enabled %}
+                    <span class="text-xs opacity-50">(выкл)</span>
+                    {% endif %}
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Video with mask overlay -->
+        <div class="card overflow-hidden mb-4">
+            <div class="video-container bg-gray-900 aspect-video flex items-center justify-center" id="videoContainer">
+                <img src="/video_feed?camera={{ current_camera }}" alt="Видеопоток" id="videoFeed" class="max-w-full max-h-full">
+                <canvas id="maskCanvas"></canvas>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="card p-4 mb-4">
+            <div class="flex flex-wrap items-center gap-3">
+                <button id="btnMask" class="btn btn-secondary" onclick="toggleMaskMode()">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6z"/>
+                    </svg>
+                    Маска
+                </button>
+                <button id="btnClear" class="btn btn-danger hidden" onclick="clearMask()">Очистить</button>
+                <button id="btnSave" class="btn btn-success hidden" onclick="saveMask()">Сохранить</button>
+                <button id="btnCancel" class="btn btn-secondary hidden" onclick="cancelMask()">Отмена</button>
+                <span id="maskStatus" class="text-sm text-gray-500 ml-2"></span>
+                <div class="flex-1"></div>
+                <span id="maskInfo" class="text-sm text-gray-500"></span>
+            </div>
+            <div id="maskHelp" class="hidden mt-3 p-3 bg-blue-50 rounded-lg text-sm text-blue-800">
+                <strong>Режим рисования маски:</strong> Кликайте по видео, чтобы нарисовать область распознавания.
+                Машины будут распознаваться только внутри этой области. Минимум 3 точки для полигона.
+            </div>
+        </div>
+
+        <!-- Status -->
+        <div class="card p-4 mb-4">
+            <div class="flex flex-wrap items-center gap-6">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-green-500 pulse"></span>
+                    <span class="text-sm text-gray-600">Распознавание активно</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="w-4 h-3 border-2 border-blue-400 rounded-sm"></span>
+                    <span class="text-sm text-gray-500">Детекция номера</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="w-4 h-3 border-2 border-green-500 rounded-sm"></span>
+                    <span class="text-sm text-gray-500">Зона распознавания</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- GPU Monitor -->
+        <div class="card" id="gpu-monitor">
+            <div class="flex items-center gap-2 p-4 cursor-pointer select-none" onclick="toggleGpu()">
+                <svg class="w-5 h-5 text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="6" width="20" height="12" rx="2"/>
+                    <path d="M6 10h2v4H6z M10 10h2v4h-2z M14 10h2v4h-2z"/>
+                    <path d="M22 10h1 M22 14h1 M1 10H0 M1 14H0"/>
+                </svg>
+                <span class="font-medium text-gray-900" id="gpu-name">GPU</span>
+                <span class="text-sm text-gray-500 ml-2" id="gpu-summary"></span>
+                <svg id="gpu-chevron" class="w-4 h-4 text-gray-400 ml-auto transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 9l-7 7-7-7"/>
+                </svg>
+            </div>
+            <div id="gpu-content" class="grid grid-cols-2 sm:grid-cols-4 gap-4 px-4 pb-4">
+                <div>
+                    <div class="flex justify-between text-sm mb-1">
+                        <span class="text-gray-500">Нагрузка</span>
+                        <span class="font-medium" id="gpu-util">--%</span>
+                    </div>
+                    <div class="gpu-bar">
+                        <div class="gpu-bar-fill bg-green-500" id="gpu-util-bar" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="flex justify-between text-sm mb-1">
+                        <span class="text-gray-500">Температура</span>
+                        <span class="font-medium" id="gpu-temp">--°C</span>
+                    </div>
+                    <div class="gpu-bar">
+                        <div class="gpu-bar-fill" id="gpu-temp-bar" style="width: 0%; background: #22c55e"></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="flex justify-between text-sm mb-1">
+                        <span class="text-gray-500">Вентилятор</span>
+                        <span class="font-medium" id="gpu-fan">--%</span>
+                    </div>
+                    <div class="gpu-bar">
+                        <div class="gpu-bar-fill bg-blue-500" id="gpu-fan-bar" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="flex justify-between text-sm mb-1">
+                        <span class="text-gray-500">Память</span>
+                        <span class="font-medium" id="gpu-mem">-- / -- MB</span>
+                    </div>
+                    <div class="gpu-bar">
+                        <div class="gpu-bar-fill bg-purple-500" id="gpu-mem-bar" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Текущая камера
+        const currentCameraId = '{{ current_camera }}';
+
+        let maskMode = false;
+        let points = [];
+        let savedMask = null;
+        const canvas = document.getElementById('maskCanvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('videoContainer');
+        const video = document.getElementById('videoFeed');
+
+        // Инициализация canvas
+        function initCanvas() {
+            const rect = video.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+        }
+
+        // Загрузка сохранённой маски для текущей камеры
+        async function loadMask() {
+            try {
+                const resp = await fetch('/api/mask?camera=' + currentCameraId);
+                const data = await resp.json();
+                if (data.mask && data.mask.length >= 3) {
+                    savedMask = data.mask;
+                    document.getElementById('maskInfo').textContent = 'Маска активна (' + savedMask.length + ' точек)';
+                    drawMask(savedMask, false);
+                } else {
+                    document.getElementById('maskInfo').textContent = 'Маска не задана';
+                }
+            } catch (e) {
+                console.error('Ошибка загрузки маски:', e);
+            }
+        }
+
+        // Отрисовка маски
+        function drawMask(pts, isDrawing = true) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (pts.length === 0) return;
+
+            ctx.beginPath();
+            ctx.moveTo(pts[0][0] * canvas.width, pts[0][1] * canvas.height);
+            for (let i = 1; i < pts.length; i++) {
+                ctx.lineTo(pts[i][0] * canvas.width, pts[i][1] * canvas.height);
+            }
+
+            if (pts.length >= 3) {
+                ctx.closePath();
+                ctx.fillStyle = isDrawing ? 'rgba(59, 130, 246, 0.2)' : 'rgba(34, 197, 94, 0.15)';
+                ctx.fill();
+            }
+
+            ctx.strokeStyle = isDrawing ? '#3b82f6' : '#22c55e';
+            ctx.lineWidth = 2;
+            ctx.setLineDash(isDrawing ? [5, 5] : []);
+            ctx.stroke();
+
+            // Точки
+            pts.forEach((pt, i) => {
+                ctx.beginPath();
+                ctx.arc(pt[0] * canvas.width, pt[1] * canvas.height, 6, 0, Math.PI * 2);
+                ctx.fillStyle = isDrawing ? '#3b82f6' : '#22c55e';
+                ctx.fill();
+                ctx.fillStyle = 'white';
+                ctx.font = '10px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(i + 1, pt[0] * canvas.width, pt[1] * canvas.height);
+            });
+        }
+
+        // Включение/выключение режима маски
+        function toggleMaskMode() {
+            maskMode = !maskMode;
+            const btn = document.getElementById('btnMask');
+            const btnClear = document.getElementById('btnClear');
+            const btnSave = document.getElementById('btnSave');
+            const btnCancel = document.getElementById('btnCancel');
+            const help = document.getElementById('maskHelp');
+
+            if (maskMode) {
+                container.classList.add('drawing');
+                btn.classList.add('btn-active');
+                btn.classList.remove('btn-secondary');
+                btnClear.classList.remove('hidden');
+                btnSave.classList.remove('hidden');
+                btnCancel.classList.remove('hidden');
+                help.classList.remove('hidden');
+                points = savedMask ? [...savedMask] : [];
+                drawMask(points, true);
+                updateStatus();
+            } else {
+                exitMaskMode();
+            }
+        }
+
+        function exitMaskMode() {
+            maskMode = false;
+            container.classList.remove('drawing');
+            const btn = document.getElementById('btnMask');
+            btn.classList.remove('btn-active');
+            btn.classList.add('btn-secondary');
+            document.getElementById('btnClear').classList.add('hidden');
+            document.getElementById('btnSave').classList.add('hidden');
+            document.getElementById('btnCancel').classList.add('hidden');
+            document.getElementById('maskHelp').classList.add('hidden');
+            document.getElementById('maskStatus').textContent = '';
+
+            // Показываем сохранённую маску
+            if (savedMask) {
+                drawMask(savedMask, false);
+            } else {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+        }
+
+        function updateStatus() {
+            document.getElementById('maskStatus').textContent =
+                points.length + ' точек' + (points.length < 3 ? ' (мин. 3)' : '');
+        }
+
+        // Клик по canvas
+        canvas.addEventListener('click', (e) => {
+            if (!maskMode) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) / rect.width;
+            const y = (e.clientY - rect.top) / rect.height;
+
+            points.push([x, y]);
+            drawMask(points, true);
+            updateStatus();
+        });
+
+        // Очистка
+        function clearMask() {
+            points = [];
+            drawMask([], true);
+            updateStatus();
+        }
+
+        // Отмена
+        function cancelMask() {
+            exitMaskMode();
+        }
+
+        // Сохранение маски для текущей камеры
+        async function saveMask() {
+            if (points.length < 3) {
+                alert('Нужно минимум 3 точки для создания маски');
+                return;
+            }
+
+            try {
+                const resp = await fetch('/api/mask', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        mask: points,
+                        camera_id: currentCameraId
+                    })
+                });
+
+                if (resp.ok) {
+                    savedMask = [...points];
+                    document.getElementById('maskInfo').textContent = 'Маска активна (' + savedMask.length + ' точек)';
+                    exitMaskMode();
+                    alert('Маска сохранена! Распознавание будет только в выделенной области.');
+                } else {
+                    alert('Ошибка сохранения маски');
+                }
+            } catch (e) {
+                alert('Ошибка: ' + e.message);
+            }
+        }
+
+        // Resize observer
+        const resizeObserver = new ResizeObserver(() => {
+            initCanvas();
+            if (savedMask && !maskMode) {
+                drawMask(savedMask, false);
+            } else if (maskMode) {
+                drawMask(points, true);
+            }
+        });
+
+        // Инициализация
+        video.onload = () => {
+            initCanvas();
+            loadMask();
+        };
+
+        // Fallback если изображение уже загружено
+        setTimeout(() => {
+            initCanvas();
+            loadMask();
+        }, 500);
+
+        resizeObserver.observe(container);
+
+        // GPU monitoring
+        let gpuExpanded = localStorage.getItem('gpuExpanded') !== 'false';
+
+        function toggleGpu() {
+            gpuExpanded = !gpuExpanded;
+            localStorage.setItem('gpuExpanded', gpuExpanded);
+            updateGpuVisibility();
+        }
+
+        function updateGpuVisibility() {
+            const content = document.getElementById('gpu-content');
+            const chevron = document.getElementById('gpu-chevron');
+            const summary = document.getElementById('gpu-summary');
+            if (gpuExpanded) {
+                content.style.display = 'grid';
+                chevron.style.transform = 'rotate(0deg)';
+                summary.style.display = 'none';
+            } else {
+                content.style.display = 'none';
+                chevron.style.transform = 'rotate(-90deg)';
+                summary.style.display = 'inline';
+            }
+        }
+
+        function getTempColor(temp) {
+            if (temp < 50) return '#22c55e';
+            if (temp < 70) return '#eab308';
+            if (temp < 85) return '#f97316';
+            return '#ef4444';
+        }
+
+        function updateGpuStats() {
+            fetch('/api/gpu')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        document.getElementById('gpu-name').textContent = 'GPU: ошибка';
+                        return;
+                    }
+                    document.getElementById('gpu-name').textContent = data.name;
+                    document.getElementById('gpu-summary').textContent = data.temp + '°C • ' + data.gpu_util + '%';
+                    document.getElementById('gpu-util').textContent = data.gpu_util + '%';
+                    document.getElementById('gpu-util-bar').style.width = data.gpu_util + '%';
+                    document.getElementById('gpu-temp').textContent = data.temp + '°C';
+                    const tempPercent = Math.min(100, (data.temp / 100) * 100);
+                    document.getElementById('gpu-temp-bar').style.width = tempPercent + '%';
+                    document.getElementById('gpu-temp-bar').style.background = getTempColor(data.temp);
+                    if (data.fan !== null) {
+                        document.getElementById('gpu-fan').textContent = data.fan + '%';
+                        document.getElementById('gpu-fan-bar').style.width = data.fan + '%';
+                    } else {
+                        document.getElementById('gpu-fan').textContent = 'N/A';
+                    }
+                    document.getElementById('gpu-mem').textContent = data.mem_used + ' / ' + data.mem_total + ' MB';
+                    const memPercent = (data.mem_used / data.mem_total) * 100;
+                    document.getElementById('gpu-mem-bar').style.width = memPercent + '%';
+                })
+                .catch(err => console.error('GPU stats error:', err));
+        }
+
+        updateGpuVisibility();
+        updateGpuStats();
+        setInterval(updateGpuStats, 2000);
+    </script>
+</body>
+</html>

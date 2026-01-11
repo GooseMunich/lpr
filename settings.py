@@ -9,6 +9,9 @@ import uuid
 SETTINGS_FILE = "/opt/lpr/data/settings.json"
 CAMERAS_FILE = "/opt/lpr/data/cameras.json"
 
+# Множество камер, которым нужно перезагрузить маску
+_mask_invalidated_cameras = set()
+
 DEFAULT_SETTINGS = {
     # Telegram (настройте через веб-интерфейс)
     "telegram_token": "",
@@ -108,10 +111,28 @@ def save_mask(mask: list, camera_id: str = None):
     if camera_id:
         # Новый способ - сохраняем в настройках камеры
         update_camera(camera_id, {'mask': mask})
+        # Помечаем камеру для перезагрузки маски
+        invalidate_mask(camera_id)
     else:
         # Legacy
         with open(MASK_FILE, 'w') as f:
             json.dump({'mask': mask}, f, indent=2)
+
+
+def invalidate_mask(camera_id: str):
+    """Пометить маску камеры как требующую перезагрузки"""
+    global _mask_invalidated_cameras
+    _mask_invalidated_cameras.add(camera_id)
+    print(f"Маска камеры {camera_id} помечена для перезагрузки", flush=True)
+
+
+def check_mask_invalidated(camera_id: str) -> bool:
+    """Проверить, нужно ли перезагрузить маску для камеры"""
+    global _mask_invalidated_cameras
+    if camera_id in _mask_invalidated_cameras:
+        _mask_invalidated_cameras.discard(camera_id)
+        return True
+    return False
 
 
 # ========== Управление камерами ==========

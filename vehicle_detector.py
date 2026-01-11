@@ -5,7 +5,7 @@
 import numpy as np
 from typing import List, Dict, Tuple, Optional
 from ultralytics import YOLO
-from settings import load_mask, get_setting
+from settings import load_mask, get_setting, check_mask_invalidated
 
 # COCO классы транспортных средств
 VEHICLE_CLASSES = {
@@ -81,7 +81,10 @@ class VehicleDetector:
     def get_mask(self, camera_id: str = None) -> list:
         """Получение маски для камеры"""
         cam_id = camera_id or self._current_camera_id
-        if cam_id not in self._masks:
+        # Проверяем, нужно ли перезагрузить маску (была изменена через API)
+        if cam_id and check_mask_invalidated(cam_id):
+            self.reload_mask(cam_id)
+        elif cam_id not in self._masks:
             self.reload_mask(cam_id)
         return self._masks.get(cam_id, [])
 

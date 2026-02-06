@@ -10,6 +10,8 @@
 """
 
 import re
+import gc
+import torch
 import os
 import cv2
 import easyocr
@@ -99,6 +101,7 @@ class PlateDetector:
 
         # Результаты для возврата
         self.pending_results = []
+        self._last_cache_clear = time.time()
         self.results_lock = threading.Lock()
 
         print("Система распознавания инициализирована", flush=True)
@@ -760,6 +763,12 @@ class PlateDetector:
 
         except Exception as e:
             print(f"Ошибка обработки: {e}", flush=True)
+
+        # Периодическая очистка GPU кеша (каждые 60 сек)
+        if time.time() - self._last_cache_clear > 60:
+            self._last_cache_clear = time.time()
+            gc.collect()
+            torch.cuda.empty_cache()
 
         # Возвращаем накопленные результаты
         new_results = self.get_results()

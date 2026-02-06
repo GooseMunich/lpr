@@ -50,6 +50,7 @@ class PlateDetectorYOLO:
                     'confidence': conf
                 })
 
+        del results
         return detections
 
     def detect_in_roi(self, frame: np.ndarray, roi_bbox: Tuple[int, int, int, int]) -> List[Dict]:

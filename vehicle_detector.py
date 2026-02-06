@@ -183,6 +183,7 @@ class VehicleDetector:
                     'confidence': conf
                 })
 
+        del results
         return detections
 
     def get_plate_roi(self, frame: np.ndarray, vehicle_bbox: Tuple[int, int, int, int]) -> np.ndarray:
